@@ -55,7 +55,8 @@ class VCTKMultiSpkDataset(Dataset):
             print(f'full speakers {len_spk_list}')
             for i, spk in enumerate(spk_list):
                 if cv == 0:
-                    if not (i < int(len_spk_list * self.cv_ratio[0])): continue
+                    if not (i < int(len_spk_list * self.cv_ratio[0])):
+                        continue
                 elif cv == 1:
                     if not (int(len_spk_list * self.cv_ratio[0]) <= i and
                             i <= int(len_spk_list * (self.cv_ratio[0] + self.cv_ratio[1]))):
@@ -66,7 +67,8 @@ class VCTKMultiSpkDataset(Dataset):
                         continue
                 _full_spk_dl = sorted(glob(path.join(spk, file_format)))
                 _len = len(_full_spk_dl)
-                if (_len == 0): continue
+                if (_len == 0):
+                    continue
                 s += 1
                 _dl.extend(_full_spk_dl)
 
@@ -92,7 +94,8 @@ class VCTKMultiSpkDataset(Dataset):
         return len(self.data_list)
 
     def __getitem__(self, index):
-        wav, _ = rosa.load(self.data_list[index], self.hparams.audio.sampling_rate)
+        wav, _ = rosa.load(
+            self.data_list[index], sr=self.hparams.audio.sampling_rate)
         wav /= np.max(np.abs(wav))
 
         if wav.shape[0] < self.hparams.audio.length:
@@ -108,12 +111,14 @@ class VCTKMultiSpkDataset(Dataset):
         if self.cv == 0:
             order = random.randint(1, 11)
             ripple = random.choice([1e-9, 1e-6, 1e-3, 1, 5])
-            highcut = random.randint(self.hparams.audio.sr_min // 2, self.hparams.audio.sr_max // 2)
+            highcut = random.randint(
+                self.hparams.audio.sr_min // 2, self.hparams.audio.sr_max // 2)
         else:
             order = 8
             ripple = 0.05
             if self.cv == 1:
-                highcut = random.choice([8000 // 2, 12000 // 2, 16000 // 2, 24000 // 2])
+                highcut = random.choice(
+                    [8000 // 2, 12000 // 2, 16000 // 2, 24000 // 2])
             elif self.cv == 2:
                 highcut = self.sr // 2
 
@@ -127,16 +132,19 @@ class VCTKMultiSpkDataset(Dataset):
             wav_l = sosfiltfilt(sos, wav)
 
             # downsample to the low sampling rate
-            wav_l = resample_poly(wav_l, highcut * 2, self.hparams.audio.sampling_rate)
+            wav_l = resample_poly(wav_l, highcut * 2,
+                                  self.hparams.audio.sampling_rate)
             # upsample to the original sampling rate
-            wav_l = resample_poly(wav_l, self.hparams.audio.sampling_rate, highcut * 2)
+            wav_l = resample_poly(
+                wav_l, self.hparams.audio.sampling_rate, highcut * 2)
 
         if len(wav_l) < len(wav):
-            wav_l = np.pad(wav, (0, len(wav) - len(wav_l)), 'constant', constant_values=0)
+            wav_l = np.pad(wav, (0, len(wav) - len(wav_l)),
+                           'constant', constant_values=0)
         elif len(wav_l) > len(wav):
             wav_l = wav_l[:len(wav)]
 
         fft_size = self.hparams.audio.filter_length // 2 + 1
-        band = torch.zeros(fft_size, dtype = torch.int64)
+        band = torch.zeros(fft_size, dtype=torch.int64)
         band[:int(hi * fft_size)] = 1
         return torch.from_numpy(wav).float(), torch.from_numpy(wav_l.copy()).float(), band

@@ -2,3 +2,8 @@
 *.DS*
 *__pycache__*
 *.pyc
+*.zip
+
+DATA1
+tensorboard
+checkpoint

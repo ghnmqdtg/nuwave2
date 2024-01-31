@@ -11,7 +11,7 @@ class STFTMag(nn.Module):
         self.hop = hop
         self.register_buffer('window', torch.hann_window(nfft), False)
 
-    #x: [B,T] or [T]
+    # x: [B,T] or [T]
     @torch.no_grad()
     def forward(self, x):
         T = x.shape[-1]
@@ -19,6 +19,7 @@ class STFTMag(nn.Module):
                           self.nfft,
                           self.hop,
                           window=self.window,
-                          )#return_complex=False)  #[B, F, TT,2]
-        mag = torch.norm(stft, p=2, dim =-1) #[B, F, TT]
+                          return_complex=True)  #[B, F, TT]
+                        #   return_complex=False)  #[B, F, TT,2]
+        mag = torch.sqrt(stft.real.pow(2) + stft.imag.pow(2))
         return mag

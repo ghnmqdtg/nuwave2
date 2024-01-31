@@ -8,7 +8,7 @@ import multiprocessing as mp
 
 
 def flac2wav(wav):
-    y,_ = rosa.load(wav, sr = hparams.audio.sampling_rate, mono = True)
+    y, _ = rosa.load(wav, sr=hparams.audio.sampling_rate, mono=True)
     file_id = os.path.split(wav)[-1].split('_mic')[0]
     if file_id in timestamps:
         start, end = timestamps[file_id]
@@ -16,15 +16,18 @@ def flac2wav(wav):
         end = end + min(len(y) - end, int(0.1 * hparams.audio.sampling_rate))
         y = y[start:end]
 
-    os.makedirs(os.path.join(hparams.data.dir, wav.split(os.sep)[-2]), exist_ok=True)
+    os.makedirs(os.path.join(hparams.data.dir,
+                wav.split(os.sep)[-2]), exist_ok=True)
 
-    wav_path = os.path.splitext(os.path.join(hparams.data.dir, wav.split(os.sep)[-2], os.path.split(wav)[-1]))[0]+'.wav'
+    wav_path = os.path.splitext(os.path.join(
+        hparams.data.dir, wav.split(os.sep)[-2], os.path.split(wav)[-1]))[0]+'.wav'
 
     swrite(wav_path, hparams.audio.sampling_rate, y)
     del y
     return
 
-if __name__=='__main__':
+
+if __name__ == '__main__':
     hparams = OC.load('hparameter.yaml')
     base_dir = hparams.data.base_dir
     os.makedirs(hparams.data.dir, exist_ok=True)
@@ -43,7 +46,7 @@ if __name__=='__main__':
             t_end = int(float(t_end) * hparams.audio.sampling_rate)
             timestamps[file_id] = (t_start, t_end)
 
-    pool = mp.Pool(processes = hparams.train.num_workers)
-    with tqdm(total = len(wavs)) as pbar:
+    pool = mp.Pool(processes=hparams.train.num_workers)
+    with tqdm(total=len(wavs)) as pbar:
         for _ in tqdm(pool.imap_unordered(flac2wav, wavs)):
             pbar.update()
