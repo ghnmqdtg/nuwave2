@@ -46,8 +46,9 @@ class DiffusionEmbedding(nn.Module):
             noise_level = noise_level.squeeze(-1)
         half_dim = self.n_channels // 2
         emb = log(10000) / (half_dim - 1)
-        emb = torch.exp(torch.arange(
-            half_dim, dtype=torch.float32).to(noise_level) * -emb)
+        emb = torch.exp(
+            torch.arange(half_dim, dtype=torch.float32).to(noise_level) * -emb
+        )
         emb = self.linear_scale * noise_level.unsqueeze(1) * emb.unsqueeze(0)
         emb = torch.cat((emb.sin(), emb.cos()), dim=-1)
         emb = self.projection1(emb)
@@ -62,8 +63,7 @@ class BSFT(nn.Module):
         super().__init__()
         self.mlp_shared = nn.Conv1d(2, nhidden, kernel_size=3, padding=1)
 
-        self.mlp_gamma = Conv1d(nhidden, out_channels,
-                                kernel_size=3, padding=1)
+        self.mlp_gamma = Conv1d(nhidden, out_channels, kernel_size=3, padding=1)
         self.mlp_beta = Conv1d(nhidden, out_channels, kernel_size=3, padding=1)
 
     def forward(self, x, band):
@@ -80,8 +80,16 @@ class BSFT(nn.Module):
 
 
 class FourierUnit(nn.Module):
-    def __init__(self, in_channels, out_channels, bsft_channels, filter_length=1024, hop_length=256, win_length=1024,
-                 sampling_rate=48000):
+    def __init__(
+        self,
+        in_channels,
+        out_channels,
+        bsft_channels,
+        filter_length=1024,
+        hop_length=256,
+        win_length=1024,
+        sampling_rate=48000,
+    ):
         # bn_layer not used
         super(FourierUnit, self).__init__()
         self.sampling_rate = sampling_rate
@@ -89,10 +97,15 @@ class FourierUnit(nn.Module):
         self.hop_size = hop_length
         self.win_size = win_length
         hann_window = torch.hann_window(win_length)
-        self.register_buffer('hann_window', hann_window)
+        self.register_buffer("hann_window", hann_window)
 
-        self.conv_layer = Conv2d(in_channels=in_channels * 2, out_channels=out_channels * 2,
-                                 kernel_size=1, padding=0, bias=False)
+        self.conv_layer = Conv2d(
+            in_channels=in_channels * 2,
+            out_channels=out_channels * 2,
+            kernel_size=1,
+            padding=0,
+            bias=False,
+        )
         self.bsft = BSFT(bsft_channels, out_channels * 2)
 
     def forward(self, x, band):
@@ -107,25 +120,59 @@ class FourierUnit(nn.Module):
         # 2. N: number of frequency samples
         # 3. T: number of frames
         # 4. C?: optional length-2 dimension of real and imaginary components, present when return_complex=False
-        ffted_initial = torch.stft(x, self.n_fft, hop_length=self.hop_size, win_length=self.win_size, window=self.hann_window,
-                               center=True, normalized=True, onesided=True, return_complex=True)
+        ffted_initial = torch.stft(
+            x,
+            self.n_fft,
+            hop_length=self.hop_size,
+            win_length=self.win_size,
+            window=self.hann_window,
+            center=True,
+            normalized=True,
+            onesided=True,
+            return_complex=True,
+        )
 
-        
         # View as real
         ffted_real = torch.view_as_real(ffted_initial)  # (BC, 2, n_fft/2+1, T, 2)
-        ffted_real = ffted_real.permute(0, 3, 1, 2).contiguous()  # (BC, 2, n_fft/2+1, T)
-        ffted_real = ffted_real.view((batch, -1,) + ffted_real.size()[2:])  # (B, 2C, n_fft/2+1, T)
+        ffted_real = ffted_real.permute(
+            0, 3, 1, 2
+        ).contiguous()  # (BC, 2, n_fft/2+1, T)
+        ffted_real = ffted_real.view(
+            (
+                batch,
+                -1,
+            )
+            + ffted_real.size()[2:]
+        )  # (B, 2C, n_fft/2+1, T)
 
         ffted_processed = relu(self.bsft(ffted_real, band))  # (B, 2C, n_fft/2+1, T)
         ffted_processed = self.conv_layer(ffted_processed)
-        ffted_processed = ffted_processed.view((-1, 2,) + ffted_processed.size()[2:]).permute(0, 2, 3, 1).contiguous()  # (BC, n_fft/2+1, T, 2)
+        ffted_processed = (
+            ffted_processed.view(
+                (
+                    -1,
+                    2,
+                )
+                + ffted_processed.size()[2:]
+            )
+            .permute(0, 2, 3, 1)
+            .contiguous()
+        )  # (BC, n_fft/2+1, T, 2)
 
         # View as complex, shape: (BC, n_fft/2+1, T)
         ffted_final = torch.view_as_complex(ffted_processed)
 
         # ISTFT ffted, output shape: (BC, T)
-        output_istft = torch.istft(ffted_final, self.n_fft, hop_length=self.hop_size, win_length=self.win_size, window=self.hann_window,
-                         center=True, normalized=True, onesided=True)
+        output_istft = torch.istft(
+            ffted_final,
+            self.n_fft,
+            hop_length=self.hop_size,
+            win_length=self.win_size,
+            window=self.hann_window,
+            center=True,
+            normalized=True,
+            onesided=True,
+        )
 
         # Reshape output to (B, C, T)
         output = output_istft.view(batch, -1, x.size()[-1])
@@ -133,49 +180,55 @@ class FourierUnit(nn.Module):
         # Debugging and visualization
         verbose = False
         if verbose:
-            print(f'Original x shape: {x.shape}')
-            print(f'Initial ffted shape: {ffted_initial.shape}')
-            print(f'Real view ffted shape (before processing): {ffted_real.shape}')
-            print(f'Real view ffted shape (after processing): {ffted_processed.shape}')
-            print(f'Final ffted shape: {ffted_final.shape}')
-            print(f'istft output shape: {output_istft.shape}')
-            print(f'Output shape: {output.shape}')
+            print(f"Original x shape: {x.shape}")
+            print(f"Initial ffted shape: {ffted_initial.shape}")
+            print(f"Real view ffted shape (before processing): {ffted_real.shape}")
+            print(f"Real view ffted shape (after processing): {ffted_processed.shape}")
+            print(f"Final ffted shape: {ffted_final.shape}")
+            print(f"istft output shape: {output_istft.shape}")
+            print(f"Output shape: {output.shape}")
 
             # Save waveforms and spectrograms as images
             plt.figure()
             plt.plot(x[0].cpu().numpy())
-            plt.savefig('waveform_input.png')
+            plt.savefig("waveform_input.png")
             plt.close()
 
             fig = plt.figure(figsize=(9, 3))
-            plt.imshow(rosa.amplitude_to_db(np.abs(ffted_initial[0].cpu()),
-                ref=np.max, top_db = 80.),
-                aspect='auto',
-                origin='lower',
-                interpolation='none')
+            plt.imshow(
+                rosa.amplitude_to_db(
+                    np.abs(ffted_initial[0].cpu()), ref=np.max, top_db=80.0
+                ),
+                aspect="auto",
+                origin="lower",
+                interpolation="none",
+            )
             plt.colorbar()
-            plt.xlabel('Frames')
-            plt.ylabel('Channels')
+            plt.xlabel("Frames")
+            plt.ylabel("Channels")
             plt.tight_layout()
-            plt.savefig('ffted_before.png')
+            plt.savefig("ffted_before.png")
             plt.close()
 
             fig = plt.figure(figsize=(9, 3))
-            plt.imshow(rosa.amplitude_to_db(np.abs(ffted_final[0].cpu()),
-                ref=np.max, top_db = 80.),
-                aspect='auto',
-                origin='lower',
-                interpolation='none')
+            plt.imshow(
+                rosa.amplitude_to_db(
+                    np.abs(ffted_final[0].cpu()), ref=np.max, top_db=80.0
+                ),
+                aspect="auto",
+                origin="lower",
+                interpolation="none",
+            )
             plt.colorbar()
-            plt.xlabel('Frames')
-            plt.ylabel('Channels')
+            plt.xlabel("Frames")
+            plt.ylabel("Channels")
             plt.tight_layout()
-            plt.savefig('ffted_after.png')
+            plt.savefig("ffted_after.png")
             plt.close()
 
             plt.figure()
             plt.plot(output_istft[0].cpu().numpy())
-            plt.savefig('waveform_output.png')
+            plt.savefig("waveform_output.png")
             plt.close()
 
         return output
@@ -185,14 +238,13 @@ class SpectralTransform(nn.Module):
     def __init__(self, in_channels, out_channels, bsft_channels, **audio_kwargs):
         # bn_layer not used
         super(SpectralTransform, self).__init__()
-        self.conv1 = Conv1d(
-            in_channels, out_channels // 2, kernel_size=1, bias=False)
+        self.conv1 = Conv1d(in_channels, out_channels // 2, kernel_size=1, bias=False)
 
-        self.fu = FourierUnit(out_channels // 2, out_channels //
-                              2, bsft_channels, **audio_kwargs)
+        self.fu = FourierUnit(
+            out_channels // 2, out_channels // 2, bsft_channels, **audio_kwargs
+        )
 
-        self.conv2 = Conv1d(
-            out_channels // 2, out_channels, kernel_size=1, bias=False)
+        self.conv2 = Conv1d(out_channels // 2, out_channels, kernel_size=1, bias=False)
 
     def forward(self, x, band):
         x = silu(self.conv1(x))
@@ -203,9 +255,17 @@ class SpectralTransform(nn.Module):
 
 
 class FFC(nn.Module):  # STFC
-    def __init__(self, in_channels, out_channels, bsft_channels, kernel_size=3,
-                 ratio_gin=0.5, ratio_gout=0.5, padding=1,
-                 **audio_kwargs):
+    def __init__(
+        self,
+        in_channels,
+        out_channels,
+        bsft_channels,
+        kernel_size=3,
+        ratio_gin=0.5,
+        ratio_gout=0.5,
+        padding=1,
+        **audio_kwargs,
+    ):
         super(FFC, self).__init__()
 
         in_cg = int(in_channels * ratio_gin)
@@ -217,14 +277,10 @@ class FFC(nn.Module):  # STFC
         self.ratio_gout = ratio_gout
         self.global_in_num = in_cg
 
-        self.convl2l = Conv1d(in_cl, out_cl, kernel_size,
-                              padding=padding, bias=False)
-        self.convl2g = Conv1d(in_cl, out_cg, kernel_size,
-                              padding=padding, bias=False)
-        self.convg2l = Conv1d(in_cg, out_cl, kernel_size,
-                              padding=padding, bias=False)
-        self.convg2g = SpectralTransform(
-            in_cg, out_cg, bsft_channels, **audio_kwargs)
+        self.convl2l = Conv1d(in_cl, out_cl, kernel_size, padding=padding, bias=False)
+        self.convl2g = Conv1d(in_cl, out_cg, kernel_size, padding=padding, bias=False)
+        self.convg2l = Conv1d(in_cg, out_cl, kernel_size, padding=padding, bias=False)
+        self.convg2g = SpectralTransform(in_cg, out_cg, bsft_channels, **audio_kwargs)
 
     def forward(self, x_l, x_g, band):
         out_xl = self.convl2l(x_l) + self.convg2l(x_g)
@@ -236,24 +292,33 @@ class FFC(nn.Module):  # STFC
 class ResidualBlock(nn.Module):
     def __init__(self, residual_channels, pos_emb_dim, bsft_channels, **audio_kwargs):
         super().__init__()
-        self.ffc1 = FFC(residual_channels, 2*residual_channels, bsft_channels,
-                        kernel_size=3, ratio_gin=0.5, ratio_gout=0.5, padding=1, **audio_kwargs)  # STFC
+        self.ffc1 = FFC(
+            residual_channels,
+            2 * residual_channels,
+            bsft_channels,
+            kernel_size=3,
+            ratio_gin=0.5,
+            ratio_gout=0.5,
+            padding=1,
+            **audio_kwargs,
+        )  # STFC
 
         self.diffusion_projection = Linear(pos_emb_dim, residual_channels)
-        self.output_projection = Conv1d(residual_channels,
-                                        2 * residual_channels, 1)
+        self.output_projection = Conv1d(residual_channels, 2 * residual_channels, 1)
 
     def forward(self, x, band, noise_level):
         noise_level = self.diffusion_projection(noise_level).unsqueeze(-1)
 
         y = x + noise_level
         y_l, y_g = torch.split(
-            y, [y.shape[1] - self.ffc1.global_in_num, self.ffc1.global_in_num], dim=1)
+            y, [y.shape[1] - self.ffc1.global_in_num, self.ffc1.global_in_num], dim=1
+        )
         y_l, y_g = self.ffc1(y_l, y_g, band)  # STFC
         gate_l, filter_l = torch.chunk(y_l, 2, dim=1)
         gate_g, filter_g = torch.chunk(y_g, 2, dim=1)
         gate, filter = torch.cat((gate_l, gate_g), dim=1), torch.cat(
-            (filter_l, filter_g), dim=1)
+            (filter_l, filter_g), dim=1
+        )
         y = torch.sigmoid(gate) * torch.tanh(filter)
         y = self.output_projection(y)
         residual, skip = torch.chunk(y, 2, dim=1)
@@ -265,20 +330,28 @@ class NuWave2(nn.Module):
         super().__init__()
         self.hparams = hparams
         self.input_projection = Conv1d(2, hparams.arch.residual_channels, 1)
-        self.diffusion_embedding = DiffusionEmbedding(
-            hparams)
-        audio_kwargs = dict(filter_length=hparams.audio.filter_length, hop_length=hparams.audio.hop_length,
-                            win_length=hparams.audio.win_length, sampling_rate=hparams.audio.sampling_rate)
-        self.residual_layers = nn.ModuleList([
-            ResidualBlock(hparams.arch.residual_channels,
-                          hparams.arch.pos_emb_dim,
-                          hparams.arch.bsft_channels,
-                          **audio_kwargs)
-            for i in range(hparams.arch.residual_layers)
-        ])
+        self.diffusion_embedding = DiffusionEmbedding(hparams)
+        audio_kwargs = dict(
+            filter_length=hparams.audio.filter_length,
+            hop_length=hparams.audio.hop_length,
+            win_length=hparams.audio.win_length,
+            sampling_rate=hparams.audio.sampling_rate,
+        )
+        self.residual_layers = nn.ModuleList(
+            [
+                ResidualBlock(
+                    hparams.arch.residual_channels,
+                    hparams.arch.pos_emb_dim,
+                    hparams.arch.bsft_channels,
+                    **audio_kwargs,
+                )
+                for i in range(hparams.arch.residual_layers)
+            ]
+        )
         self.len_res = len(self.residual_layers)
-        self.skip_projection = Conv1d(hparams.arch.residual_channels,
-                                      hparams.arch.residual_channels, 1)
+        self.skip_projection = Conv1d(
+            hparams.arch.residual_channels, hparams.arch.residual_channels, 1
+        )
         self.output_projection = Conv1d(hparams.arch.residual_channels, 1, 1)
 
     def forward(self, audio, audio_low, band, noise_level):
@@ -290,7 +363,7 @@ class NuWave2(nn.Module):
 
         # This way is more faster!
         # skip = []
-        skip = 0.
+        skip = 0.0
         for layer in self.residual_layers:
             x, skip_connection = layer(x, band, noise_level)
             # skip.append(skip_connection)
