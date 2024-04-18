@@ -52,6 +52,8 @@ def save_results_to_csv(results, filename="results.csv"):
 
 
 def test(args):
+    print(f'Running {args.sr} to {"48kHz" if args.resume_from == 629 else "16kHz"}')
+
     def cal_snr(pred, target):
         return (
             20
@@ -72,7 +74,11 @@ def test(args):
             (sp[:, :hf, :] - st[:, :hf, :]).square().mean(dim=1).sqrt().mean(),
         )
 
-    hparams = OC.load("hparameter.yaml")
+    if args.resume_from == 629:
+        hparams = OC.load("hparameter.yaml")
+    else:
+        hparams = OC.load("hparameter_16kHz.yaml")
+
     hparams.save = args.save or False
     if args.cuda:
         model = NuWave2(hparams, False).cuda()
@@ -95,7 +101,10 @@ def test(args):
     print(ckpt_path)
     model.eval()
     model.freeze()
-    os.makedirs(f"{hparams.log.test_result_dir}/{args.sr}", exist_ok=True)
+    os.makedirs(
+        f"{hparams.log.test_result_dir}/{hparams.audio.sampling_rate}/{args.sr}",
+        exist_ok=True,
+    )
 
     results = []
     for i in range(5):
@@ -145,17 +154,17 @@ def test(args):
 
             if args.save and i == 0:
                 swrite(
-                    f"{hparams.log.test_result_dir}/{args.sr}/test_{j}_up.wav",
+                    f"{hparams.log.test_result_dir}/{hparams.audio.sampling_rate}/{args.sr}/test_{j}_up.wav",
                     hparams.audio.sampling_rate,
                     wav_up[0].detach().cpu().numpy(),
                 )
                 swrite(
-                    f"{hparams.log.test_result_dir}/{args.sr}/test_{j}_orig.wav",
+                    f"{hparams.log.test_result_dir}/{hparams.audio.sampling_rate}/{args.sr}/test_{j}_orig.wav",
                     hparams.audio.sampling_rate,
                     wav[0].detach().cpu().numpy(),
                 )
                 swrite(
-                    f"{hparams.log.test_result_dir}/{args.sr}/test_{j}_down.wav",
+                    f"{hparams.log.test_result_dir}/{hparams.audio.sampling_rate}/{args.sr}/test_{j}_down.wav",
                     hparams.audio.sampling_rate,
                     wav_l[0].detach().cpu().numpy(),
                 )
@@ -171,16 +180,16 @@ def test(args):
         rtf = torch.tensor(rtf_list).mean()
         rtf_reciprocal = 1 / rtf
         dict = {
-            "snr": snr.item(),
-            "base_snr": base_snr.item(),
-            "lsd": lsd.item(),
-            "base_lsd": base_lsd.item(),
-            "lsd_hf": lsd_hf.item(),
-            "base_lsd_hf": base_lsd_hf.item(),
-            "lsd_lf": lsd_lf.item(),
-            "base_lsd_lf": base_lsd_lf.item(),
-            "rtf": rtf.item(),
-            "rtf_reciprocal": rtf_reciprocal.item(),
+            "snr": f"{snr.item():.2f}",
+            "base_snr": f"{base_snr.item():.2f}",
+            "lsd": f"{lsd.item():.2f}",
+            "base_lsd": f"{base_lsd.item():.2f}",
+            "lsd_hf": f"{lsd_hf.item():.2f}",
+            "base_lsd_hf": f"{base_lsd_hf.item():.2f}",
+            "lsd_lf": f"{lsd_lf.item():.2f}",
+            "base_lsd_lf": f"{base_lsd_lf.item():.2f}",
+            "rtf": f"{rtf.item():.2f}",
+            "rtf_reciprocal": f"{rtf_reciprocal.item():.2f}",
         }
         results.append(
             torch.stack(

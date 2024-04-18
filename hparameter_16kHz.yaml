@@ -19,9 +19,9 @@ audio:
   filter_length: 1024
   hop_length: 256
   win_length: 1024
-  sampling_rate: 48000
+  sampling_rate: 16000
   sr_min: 6000
-  sr_max: 48000
+  sr_max: 16000
   length: 32768 #32*1024 ~ 1sec
 
 arch:
