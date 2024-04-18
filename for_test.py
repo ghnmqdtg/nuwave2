@@ -8,6 +8,7 @@ import datetime
 from glob import glob
 import torch
 from tqdm import tqdm
+import torchaudio
 from scipy.io.wavfile import write as swrite
 
 from utils.stft import STFTMag
@@ -155,20 +156,24 @@ def test(args):
             base_lsd_lf_list.append(base_lsd_lf_j)
 
             if args.save and i == 0:
-                swrite(
+                # Save audio in 16-bit PCM format using torchaudio
+                torchaudio.save(
                     f"{hparams.log.test_result_dir}/{hparams.audio.sampling_rate}/{args.sr}/test_{j}_up.wav",
+                    wav_up,
                     hparams.audio.sampling_rate,
-                    wav_up[0].detach().cpu().numpy(),
+                    bits_per_sample=16,
                 )
-                swrite(
+                torchaudio.save(
                     f"{hparams.log.test_result_dir}/{hparams.audio.sampling_rate}/{args.sr}/test_{j}_orig.wav",
+                    wav,
                     hparams.audio.sampling_rate,
-                    wav[0].detach().cpu().numpy(),
+                    bits_per_sample=16,
                 )
-                swrite(
+                torchaudio.save(
                     f"{hparams.log.test_result_dir}/{hparams.audio.sampling_rate}/{args.sr}/test_{j}_down.wav",
+                    wav_l,
                     hparams.audio.sampling_rate,
-                    wav_l[0].detach().cpu().numpy(),
+                    bits_per_sample=16,
                 )
 
         snr = torch.stack(snr_list, dim=0).mean()
