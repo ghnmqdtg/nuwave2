@@ -52,7 +52,9 @@ def save_results_to_csv(results, filename="results.csv"):
 
 
 def test(args):
-    print(f'Running {args.sr} to {"48kHz" if args.resume_from == 629 else "16kHz"}')
+    print(
+        f'Running {args.sr} to {"48000" if args.resume_from == 629 else "16000"} | CUDA: {args.cuda} | EMA: {args.ema} | Save: {args.save}'
+    )
 
     def cal_snr(pred, target):
         return (
@@ -246,7 +248,7 @@ if __name__ == "__main__":
     )
     parser.add_argument("--save", action="store_true", required=False, help="Save file")
     parser.add_argument(
-        "--cuda", action="store_true", required=True, help="Enable CPU running"
+        "--cuda", action="store_true", required=False, help="Enable CPU running"
     )
     parser.add_argument("--sr", type=int, required=True, help="input sampling rate")
 
