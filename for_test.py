@@ -124,7 +124,7 @@ def test(args):
         t = model.test_dataloader(sr=args.sr)
         hf = int(1025 * (args.sr / hparams.audio.sampling_rate))
         for j, batch in enumerate(tqdm(t)):
-            wav, wav_l, band = batch
+            wav, wav_l, band, filename = batch
             if args.cuda:
                 # wav = wav.cuda()
                 wav_l = wav_l.cuda()
@@ -158,19 +158,19 @@ def test(args):
             if args.save and i == 0:
                 # Save audio in 16-bit PCM format using torchaudio
                 torchaudio.save(
-                    f"{hparams.log.test_result_dir}/{hparams.audio.sampling_rate}/{args.sr}/test_{j}_up.wav",
+                    f"{hparams.log.test_result_dir}/{hparams.audio.sampling_rate}/{args.sr}/{filename[0].replace('_mic1.wav', '')}_up.wav",
                     wav_up,
                     hparams.audio.sampling_rate,
                     bits_per_sample=16,
                 )
                 torchaudio.save(
-                    f"{hparams.log.test_result_dir}/{hparams.audio.sampling_rate}/{args.sr}/test_{j}_orig.wav",
+                    f"{hparams.log.test_result_dir}/{hparams.audio.sampling_rate}/{args.sr}/{filename[0].replace('_mic1.wav', '')}_orig.wav",
                     wav,
                     hparams.audio.sampling_rate,
                     bits_per_sample=16,
                 )
                 torchaudio.save(
-                    f"{hparams.log.test_result_dir}/{hparams.audio.sampling_rate}/{args.sr}/test_{j}_down.wav",
+                    f"{hparams.log.test_result_dir}/{hparams.audio.sampling_rate}/{args.sr}/{filename[0].replace('_mic1.wav', '')}_down.wav",
                     wav_l,
                     hparams.audio.sampling_rate,
                     bits_per_sample=16,
