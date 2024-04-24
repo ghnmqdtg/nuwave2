@@ -110,7 +110,7 @@ def test(args):
     )
 
     results = []
-    for i in range(5):
+    for i in range(3):
         snr_list = []
         base_snr_list = []
         lsd_list = []

@@ -3,6 +3,7 @@
 *__pycache__*
 *.pyc
 *.zip
+*.out
 
 DATA1
 tensorboard
