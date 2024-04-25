@@ -126,13 +126,9 @@ def test(args):
         for j, batch in enumerate(tqdm(t)):
             wav, wav_l, band, filename = batch
             if args.cuda:
-                # wav = wav.cuda()
+                wav = wav.cuda()
                 wav_l = wav_l.cuda()
                 band = band.cuda()
-            else:
-                # wav = wav
-                wav_l = wav_l
-                band = band
 
             start_time = time.time()
             wav_up, *_ = model.inference(
@@ -140,9 +136,6 @@ def test(args):
             )
             run_time = time.time() - start_time
             rtf_list.append(run_time / wav_l.size(1) * hparams.audio.sampling_rate)
-
-            wav_up = wav_up.cpu().detach()
-            wav_l = wav_l.cpu().detach()
 
             snr_list.append(cal_snr(wav_up, wav))
             base_snr_list.append(cal_snr(wav_l, wav))
@@ -159,19 +152,19 @@ def test(args):
                 # Save audio in 16-bit PCM format using torchaudio
                 torchaudio.save(
                     f"{hparams.log.test_result_dir}/{hparams.audio.sampling_rate}/{args.sr}/{filename[0].replace('_mic1.wav', '')}_up.wav",
-                    wav_up,
+                    wav_up.cpu().detach(),
                     hparams.audio.sampling_rate,
                     bits_per_sample=16,
                 )
                 torchaudio.save(
                     f"{hparams.log.test_result_dir}/{hparams.audio.sampling_rate}/{args.sr}/{filename[0].replace('_mic1.wav', '')}_orig.wav",
-                    wav,
+                    wav.cpu().detach(),
                     hparams.audio.sampling_rate,
                     bits_per_sample=16,
                 )
                 torchaudio.save(
                     f"{hparams.log.test_result_dir}/{hparams.audio.sampling_rate}/{args.sr}/{filename[0].replace('_mic1.wav', '')}_down.wav",
-                    wav_l,
+                    wav_l.cpu().detach(),
                     hparams.audio.sampling_rate,
                     bits_per_sample=16,
                 )
@@ -186,6 +179,7 @@ def test(args):
         base_lsd_lf = torch.stack(base_lsd_lf_list, dim=0).mean()
         rtf = torch.tensor(rtf_list).mean()
         rtf_reciprocal = 1 / rtf
+
         dict = {
             "snr": f"{snr.item():.2f}",
             "base_snr": f"{base_snr.item():.2f}",
@@ -198,19 +192,20 @@ def test(args):
             "rtf": f"{rtf.item():.2f}",
             "rtf_reciprocal": f"{rtf_reciprocal.item():.2f}",
         }
+
         results.append(
             torch.stack(
                 [
-                    snr,
-                    base_snr,
-                    lsd,
-                    base_lsd,
-                    lsd_hf,
-                    base_lsd_hf,
-                    lsd_lf,
-                    base_lsd_lf,
-                    rtf,
-                    rtf_reciprocal,
+                    snr.cpu(),
+                    base_snr.cpu(),
+                    lsd.cpu(),
+                    base_lsd.cpu(),
+                    lsd_hf.cpu(),
+                    base_lsd_hf.cpu(),
+                    lsd_lf.cpu(),
+                    base_lsd_lf.cpu(),
+                    rtf.cpu(),
+                    rtf_reciprocal.cpu(),
                 ],
                 dim=0,
             ).unsqueeze(-1)
