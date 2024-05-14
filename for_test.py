@@ -16,6 +16,8 @@ from utils.stft import STFTMag
 import csv
 import time
 
+from torchinfo import summary
+
 
 def save_results_to_csv(results, filename="results.csv"):
     # Check if file exists. If not, create it and write headers
@@ -108,6 +110,8 @@ def test(args):
         f"{hparams.log.test_result_dir}/{hparams.audio.sampling_rate}/{args.sr}",
         exist_ok=True,
     )
+
+    print(model.flops())
 
     results = []
     for i in range(1):

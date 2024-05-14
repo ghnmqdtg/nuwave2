@@ -5,6 +5,10 @@ import pytorch_lightning as pl
 import dataloader
 from diffusion import Diffusion
 
+from copy import deepcopy
+from fvcore.nn import flop_count, parameter_count
+from torchinfo import summary
+
 
 class NuWave2(pl.LightningModule):
     def __init__(self, hparams, train=True):
@@ -36,75 +40,116 @@ class NuWave2(pl.LightningModule):
             h = (self.hparams.logsnr.logsnr_max - self.hparams.logsnr.logsnr_min) / step
         for i in range(step):
             if noise_schedule == None:
-                logsnr_t = (self.hparams.logsnr.logsnr_min + i * h) * torch.ones(signal.shape[0], dtype=signal.dtype,
-                                                                                 device=signal.device)
-                logsnr_s = (self.hparams.logsnr.logsnr_min + (i+1) * h) * torch.ones(signal.shape[0], dtype=signal.dtype,
-                                                                                 device=signal.device)
-                signal, recon = self.model.denoise_ddim(signal, wav_l, band, logsnr_t, logsnr_s)
+                logsnr_t = (self.hparams.logsnr.logsnr_min + i * h) * torch.ones(
+                    signal.shape[0], dtype=signal.dtype, device=signal.device
+                )
+                logsnr_s = (self.hparams.logsnr.logsnr_min + (i + 1) * h) * torch.ones(
+                    signal.shape[0], dtype=signal.dtype, device=signal.device
+                )
+                signal, recon = self.model.denoise_ddim(
+                    signal, wav_l, band, logsnr_t, logsnr_s
+                )
             else:
-                logsnr_t = noise_schedule[i] * torch.ones(signal.shape[0], dtype=signal.dtype, device=signal.device)
-                if i == step-1:
-                    logsnr_s = self.hparams.logsnr.logsnr_max * torch.ones(signal.shape[0], dtype=signal.dtype, device=signal.device)
+                logsnr_t = noise_schedule[i] * torch.ones(
+                    signal.shape[0], dtype=signal.dtype, device=signal.device
+                )
+                if i == step - 1:
+                    logsnr_s = self.hparams.logsnr.logsnr_max * torch.ones(
+                        signal.shape[0], dtype=signal.dtype, device=signal.device
+                    )
                 else:
-                    logsnr_s = noise_schedule[i+1] * torch.ones(signal.shape[0], dtype=signal.dtype, device=signal.device)
-                signal, recon = self.model.denoise_ddim(signal, wav_l, band, logsnr_t, logsnr_s)
+                    logsnr_s = noise_schedule[i + 1] * torch.ones(
+                        signal.shape[0], dtype=signal.dtype, device=signal.device
+                    )
+                signal, recon = self.model.denoise_ddim(
+                    signal, wav_l, band, logsnr_t, logsnr_s
+                )
             signal_list.append(signal)
-        wav_recon = torch.clamp(signal, min=-1, max=1-torch.finfo(torch.float16).eps)
+        wav_recon = torch.clamp(signal, min=-1, max=1 - torch.finfo(torch.float16).eps)
         return wav_recon, signal_list
 
     def training_step(self, batch, batch_idx):
         wav, wav_l, band = batch
-        t = ((1 - torch.rand(1, dtype=wav.dtype, device=wav.device))
-             + torch.arange(wav.shape[0], dtype=wav.dtype, device=wav.device)/wav.shape[0])%1
-        loss, *_ = \
-            self.common_step(wav, wav_l, band, t)
+        t = (
+            (1 - torch.rand(1, dtype=wav.dtype, device=wav.device))
+            + torch.arange(wav.shape[0], dtype=wav.dtype, device=wav.device)
+            / wav.shape[0]
+        ) % 1
+        loss, *_ = self.common_step(wav, wav_l, band, t)
 
-        self.log('train/loss', loss, sync_dist=True)
+        self.log("train/loss", loss, sync_dist=True)
 
         return loss
 
     def validation_step(self, batch, batch_idx):
         wav, wav_l, band = batch
 
-        t = ((1 - torch.rand(1, dtype=wav.dtype, device=wav.device))
-            + torch.arange(wav.shape[0], dtype=wav.dtype, device=wav.device) / wav.shape[0]) % 1
+        t = (
+            (1 - torch.rand(1, dtype=wav.dtype, device=wav.device))
+            + torch.arange(wav.shape[0], dtype=wav.dtype, device=wav.device)
+            / wav.shape[0]
+        ) % 1
         loss, wav, wav_noisy, z, z_recon, logsnr = self.common_step(wav, wav_l, band, t)
 
-        self.log('val/loss', loss, sync_dist=True)
+        self.log("val/loss", loss, sync_dist=True)
         if batch_idx == 0:
             i = torch.randint(0, wav.shape[0], (1,)).item()
             logsnr_t, *_ = self.model.snr(t)
-            _, wav_recon = self.model.denoise_ddim(wav_noisy[i].unsqueeze(0), wav_l[i].unsqueeze(0),
-                                                   band[i].unsqueeze(0), logsnr_t[i].unsqueeze(0),
-                                                   torch.tensor(self.hparams.logsnr.logsnr_min, device=logsnr_t.device).unsqueeze(0),
-                                                   z_recon[i].unsqueeze(0))
-            signal = torch.randn(wav.shape[-1], dtype=wav.dtype, device=wav.device).unsqueeze(0)
-            h = 1/1000
+            _, wav_recon = self.model.denoise_ddim(
+                wav_noisy[i].unsqueeze(0),
+                wav_l[i].unsqueeze(0),
+                band[i].unsqueeze(0),
+                logsnr_t[i].unsqueeze(0),
+                torch.tensor(
+                    self.hparams.logsnr.logsnr_min, device=logsnr_t.device
+                ).unsqueeze(0),
+                z_recon[i].unsqueeze(0),
+            )
+            signal = torch.randn(
+                wav.shape[-1], dtype=wav.dtype, device=wav.device
+            ).unsqueeze(0)
+            h = 1 / 1000
             wav_l_i, band_i = wav_l[i].unsqueeze(0), band[i].unsqueeze(0)
             for step in range(1000):
-                timestep = (1.0 - (step + 0.5) * h) * torch.ones(signal.shape[0], dtype=signal.dtype,
-                                                       device=signal.device)
+                timestep = (1.0 - (step + 0.5) * h) * torch.ones(
+                    signal.shape[0], dtype=signal.dtype, device=signal.device
+                )
                 signal = self.model.denoise(signal, wav_l_i, band_i, timestep, h)
                 signal = signal.clamp(-10.0, 10.0)
             wav_recon_allstep = signal.clamp(-1.0, 1.0)
             z_error = z - z_recon
-            self.trainer.logger.log_spectrogram(wav[i], wav_noisy[i], z_error[i],
-                                                wav_recon_allstep[0], wav_recon[0], wav_l[i],
-                                                t[i].item(), logsnr[i].item(),
-                                                self.global_step)
-            self.trainer.logger.log_audio(wav[i], wav_noisy[i], wav_recon[0], wav_recon_allstep[0], wav_l[i], self.current_epoch)
+            self.trainer.logger.log_spectrogram(
+                wav[i],
+                wav_noisy[i],
+                z_error[i],
+                wav_recon_allstep[0],
+                wav_recon[0],
+                wav_l[i],
+                t[i].item(),
+                logsnr[i].item(),
+                self.global_step,
+            )
+            self.trainer.logger.log_audio(
+                wav[i],
+                wav_noisy[i],
+                wav_recon[0],
+                wav_recon_allstep[0],
+                wav_l[i],
+                self.current_epoch,
+            )
 
         return {
-            'val_loss': loss,
+            "val_loss": loss,
         }
 
     def configure_optimizers(self):
-        opt = torch.optim.Adam(self.parameters(),
-                               lr=self.hparams.train.lr,
-                               eps=self.hparams.train.opt_eps,
-                               betas=(self.hparams.train.beta1,
-                                      self.hparams.train.beta2),
-                               weight_decay=self.hparams.train.weight_decay)
+        opt = torch.optim.Adam(
+            self.parameters(),
+            lr=self.hparams.train.lr,
+            eps=self.hparams.train.opt_eps,
+            betas=(self.hparams.train.beta1, self.hparams.train.beta2),
+            weight_decay=self.hparams.train.weight_decay,
+        )
         return opt
 
     def train_dataloader(self):
@@ -115,3 +160,40 @@ class NuWave2(pl.LightningModule):
 
     def test_dataloader(self, sr):
         return dataloader.create_vctk_dataloader(self.hparams, 2, sr)
+
+    @torch.no_grad()
+    def flops(self, shape=None):
+        # shape = self.__input_shape__[1:]
+        supported_ops = {
+            "aten::silu": None,  # as relu is in _IGNORED_OPS
+            "aten::gelu": None,  # as relu is in _IGNORED_OPS
+            "aten::neg": None,  # as relu is in _IGNORED_OPS
+            "aten::exp": None,  # as relu is in _IGNORED_OPS
+            "aten::flip": None,  # as permute is in _IGNORED_OPS
+        }
+
+        model = deepcopy(self)
+        model.cuda().eval()
+
+        train_dataloader = self.train_dataloader()
+        wav, wav_l, band = next(iter(train_dataloader))
+        wav, wav_l, band = wav.cuda(), wav_l.cuda(), band.cuda()
+        print(f"Input shape: {wav.shape}, {wav_l.shape}, {band.shape}")
+        params = parameter_count(model)[""]
+        Gflops, unsupported = flop_count(
+            model=model,
+            inputs=(wav, wav_l, band, eval(self.hparams.dpm.infer_schedule).cuda()),
+            supported_ops=supported_ops,
+        )
+        statics = summary(
+            model,
+            input_data=[wav, wav_l, band, eval(self.hparams.dpm.infer_schedule).cuda()],
+            verbose=0,
+        )
+        del model
+        torch.cuda.empty_cache()
+
+        # Return the number of parameters and FLOPs
+        return (
+            f"{statics}\nparams {params/1e6:.2f}M, GFLOPs {sum(Gflops.values()):.2f}\n"
+        )
