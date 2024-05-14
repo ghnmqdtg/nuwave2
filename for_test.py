@@ -110,7 +110,7 @@ def test(args):
     )
 
     results = []
-    for i in range(3):
+    for i in range(1):
         snr_list = []
         base_snr_list = []
         lsd_list = []
@@ -135,7 +135,7 @@ def test(args):
                 wav_l, band, 8, eval(hparams.dpm.infer_schedule)
             )
             run_time = time.time() - start_time
-            rtf_list.append(run_time / wav_l.size(1) * hparams.audio.sampling_rate)
+            rtf_list.append(run_time / (wav_l.size(1) / hparams.audio.sampling_rate))
 
             snr_list.append(cal_snr(wav_up, wav))
             base_snr_list.append(cal_snr(wav_l, wav))
